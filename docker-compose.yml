@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: chat-service
+    container_name: chat-service-1
     ports:
       - "8080:8080"
     environment:
@@ -22,7 +22,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: chat-service
+    container_name: chat-service-2
     ports:
       - "8081:8080"
     environment:
