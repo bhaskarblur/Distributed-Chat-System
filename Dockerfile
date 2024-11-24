@@ -1,35 +1,35 @@
-# Use official Golang image as a build stage
-FROM golang:1.22.9-bullseye as builder
+# Use Golang as the base image for building the application
+FROM golang:1.23.1-bullseye AS builder
+
+# Set the working directory
+WORKDIR /build
+
+# Set up Go dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
+# Build the Go binary
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o main ./cmd/server
+
+# Use a smaller base image for the runtime
+FROM debian:bullseye-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl-dev zlib1g && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
 
-# Copy go.mod and go.sum files
-COPY go.mod go.sum ./
-
-# Download all dependencies
-RUN go mod download
-
-# Copy the rest of the application files
-COPY . .
-
-# Build the application binary targeting cmd/main.go
-RUN go build -o distributed-chat-system ./cmd/main.go
-
-# Use a smaller base image for the runtime stage
-FROM alpine:latest
-
-# Install certificates for HTTPS
-RUN apk --no-cache add ca-certificates
-
-# Set the working directory
-WORKDIR /root/
-
 # Copy the built binary from the builder stage
-COPY --from=builder /app/distributed-chat-system .
+COPY --from=builder /build/main .
 
 # Expose the application port
 EXPOSE 8080
 
-# Command to run the binary
-CMD ["./distributed-chat-system"]
+# Command to run the application
+CMD ["./main"]

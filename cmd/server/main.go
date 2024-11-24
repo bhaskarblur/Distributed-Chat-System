@@ -2,6 +2,7 @@ package main
 
 import (
 	"distributed-chat-system/internal/apis/routes"
+	"distributed-chat-system/internal/di"
 	"log"
 	"os"
 
@@ -20,6 +21,7 @@ func main() {
 		}
 	}
 
+	di.InitializeDependencies()
 	// Create a Gin router instance
 	router := gin.Default()
 

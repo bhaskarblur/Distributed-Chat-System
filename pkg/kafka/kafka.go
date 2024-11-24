@@ -3,99 +3,92 @@ package kafka
 import (
 	"context"
 	"log"
+	"strings"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	kafka "github.com/segmentio/kafka-go"
 )
 
 type KafkaClient struct {
-	Producer *kafka.Producer
-	Consumer *kafka.Consumer
+	Producer *kafka.Writer
+	Consumer *kafka.Reader
 	Config   *Config
 }
 
 // NewKafkaClient initializes a new Kafka client
-func NewKafkaClient(cfg *Config) (*KafkaClient, error) {
-	producer, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": cfg.Brokers})
-	if err != nil {
-		return nil, err
-	}
+func NewKafkaClient(cfg *Config) *KafkaClient {
+	// Convert comma-separated brokers string to a slice
+	brokers := strings.Split(cfg.Brokers, ",")
 
-	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": cfg.Brokers,
-		"group.id":          cfg.GroupID,
-		"auto.offset.reset": cfg.AutoOffset,
+	// Initialize Producer
+	producer := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  brokers,
+		Balancer: &kafka.LeastBytes{},
 	})
-	if err != nil {
-		producer.Close()
-		return nil, err
-	}
 
 	return &KafkaClient{
 		Producer: producer,
-		Consumer: consumer,
 		Config:   cfg,
-	}, nil
+	}
 }
 
 // PublishMessage sends a message to a Kafka topic
 func (k *KafkaClient) PublishMessage(topic, message string) error {
-	deliveryChan := make(chan kafka.Event, 1)
-
-	err := k.Producer.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-		Value:          []byte(message),
-	}, deliveryChan)
+	err := k.Producer.WriteMessages(context.Background(),
+		kafka.Message{
+			Topic: topic,
+			Value: []byte(message),
+		},
+	)
 	if err != nil {
+		log.Printf("Failed to deliver message to topic %s: %v\n", topic, err)
 		return err
 	}
 
-	// Wait for delivery report
-	e := <-deliveryChan
-	msg := e.(*kafka.Message)
-	if msg.TopicPartition.Error != nil {
-		log.Printf("Failed to deliver message: %v\n", msg.TopicPartition.Error)
-	} else {
-		log.Printf("Message delivered to topic %s [%d] at offset %v\n",
-			*msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset)
-	}
-	close(deliveryChan)
+	log.Printf("Message delivered to topic %s\n", topic)
 	return nil
 }
 
-// ConsumeMessages starts consuming messages from Kafka
-func (k *KafkaClient) ConsumeMessages(ctx context.Context, handler func(message string)) error {
-	err := k.Consumer.SubscribeTopics(k.Config.Topics, nil)
-	if err != nil {
-		return err
-	}
+// ConsumeMessages starts consuming messages from a specified Kafka topic at runtime
+func (k *KafkaClient) ConsumeMessages(ctx context.Context, topic string, handler func(message string)) error {
+	// Convert comma-separated brokers string to a slice
+	brokers := strings.Split(k.Config.Brokers, ",")
+
+	// Initialize Consumer dynamically for the topic
+	consumer := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:     brokers,
+		GroupID:     k.Config.GroupID,
+		Topic:       topic,
+		MinBytes:    10e3, // 10KB
+		MaxBytes:    10e6, // 10MB
+		StartOffset: kafka.FirstOffset,
+	})
 
 	go func() {
-		defer k.Consumer.Close()
+		defer consumer.Close()
 		for {
 			select {
 			case <-ctx.Done():
 				log.Println("Stopping Kafka consumer...")
 				return
 			default:
-				msg, err := k.Consumer.ReadMessage(-1)
-				if err == nil {
-					log.Printf("Received message: %s\n", string(msg.Value))
-					handler(string(msg.Value))
-				} else {
-					log.Printf("Consumer error: %v\n", err)
+				m, err := consumer.ReadMessage(ctx)
+				if err != nil {
+					log.Printf("Consumer error for topic %s: %v\n", topic, err)
+					continue
 				}
+				log.Printf("Received message from topic %s: %s\n", m.Topic, string(m.Value))
+				handler(string(m.Value))
 			}
 		}
 	}()
 	return nil
 }
 
-// Close gracefully shuts down the Kafka producer and consumer
+// Close gracefully shuts down the Kafka producer
 func (k *KafkaClient) Close() {
 	if k.Producer != nil {
-		k.Producer.Close()
-	}
-	if k.Consumer != nil {
-		k.Consumer.Close()
+		if err := k.Producer.Close(); err != nil {
+			log.Printf("Failed to close Kafka producer: %v\n", err)
+		}
 	}
 }

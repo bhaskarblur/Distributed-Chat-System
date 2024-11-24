@@ -21,5 +21,5 @@ func SetupWebSocket(router *gin.RouterGroup) {
 	}
 
 	// Define the WebSocket route
-	router.GET("/ws/user/:user_id", socketHandler.InitWebSocket)
+	router.GET("/user/:user_id", socketHandler.InitWebSocket)
 }
