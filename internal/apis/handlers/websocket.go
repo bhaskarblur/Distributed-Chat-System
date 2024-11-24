@@ -41,6 +41,7 @@ func InitWebSocketHandler(chatService *services.ChatMessageService) *WebSocketHa
 func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 	// Extract user_id from path params
 	userID := c.Param("user_id")
+	log.Println("user_id", userID)
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
 		return
@@ -48,6 +49,9 @@ func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 
 	// Upgrade the connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
+
+	log.Printf("Headers: %+v\n", c.Request.Header)
+
 	if err != nil {
 		log.Println("Failed to upgrade to WebSocket:", err)
 		return

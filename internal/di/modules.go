@@ -19,13 +19,14 @@ func InitializeDependencies() {
 		Container = dig.New()
 	}
 
+	log.Println("Kafka url:", os.Getenv("KAFKA_URL"))
 	// Provide KafkaClient
 	err := Container.Provide(func() (*kafka.KafkaClient, error) {
 		cfg := kafka.DefaultConfig()
 		cfg.Brokers = os.Getenv("KAFKA_URL") // Update as per your environment
 		cfg.Topics = []string{constants.ChatMessageTopic}
 		cfg.GroupID = os.Getenv("CHAT_GROUP_ID")
-		return kafka.NewKafkaClient(cfg)
+		return kafka.NewKafkaClient(cfg), nil
 	})
 	if err != nil {
 		log.Fatalf("Failed to provide KafkaClient: %v", err)

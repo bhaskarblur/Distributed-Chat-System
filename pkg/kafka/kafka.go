@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"distributed-chat-system/internal/constants"
 	"log"
 	"strings"
 
@@ -9,9 +10,10 @@ import (
 )
 
 type KafkaClient struct {
-	Producer *kafka.Writer
-	Consumer *kafka.Reader
-	Config   *Config
+	Producer     *kafka.Writer
+	Consumer     *kafka.Reader
+	Config       *Config
+	DefaultTopic string
 }
 
 // NewKafkaClient initializes a new Kafka client
@@ -26,25 +28,27 @@ func NewKafkaClient(cfg *Config) *KafkaClient {
 	})
 
 	return &KafkaClient{
-		Producer: producer,
-		Config:   cfg,
+		Producer:     producer,
+		Config:       cfg,
+		DefaultTopic: constants.ChatMessageTopic,
 	}
 }
 
 // PublishMessage sends a message to a Kafka topic
-func (k *KafkaClient) PublishMessage(topic, message string) error {
+func (k *KafkaClient) PublishMessage(receiverID, message string) error {
 	err := k.Producer.WriteMessages(context.Background(),
 		kafka.Message{
-			Topic: topic,
+			Topic: k.DefaultTopic, // Default topic is used
+			Key:   []byte(receiverID),
 			Value: []byte(message),
 		},
 	)
 	if err != nil {
-		log.Printf("Failed to deliver message to topic %s: %v\n", topic, err)
+		log.Printf("Failed to deliver message to topic %s: %v\n", k.DefaultTopic, err)
 		return err
 	}
 
-	log.Printf("Message delivered to topic %s\n", topic)
+	log.Printf("Message delivered to topic %s\n", k.DefaultTopic)
 	return nil
 }
 
@@ -53,6 +57,7 @@ func (k *KafkaClient) ConsumeMessages(ctx context.Context, topic string, handler
 	// Convert comma-separated brokers string to a slice
 	brokers := strings.Split(k.Config.Brokers, ",")
 
+	log.Println("Kafka Consumer brokers: ", brokers)
 	// Initialize Consumer dynamically for the topic
 	consumer := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,

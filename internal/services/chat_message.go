@@ -33,7 +33,7 @@ func NewChatMessageService(kafkaClient *kafka.KafkaClient) *ChatMessageService {
 
 // Starts listening to messages from Kafka consumer
 func (s *ChatMessageService) StartMessageConsumption() {
-	s.kafkaClient.ConsumeMessages(context.Background(), s.consumeChatMessage)
+	s.kafkaClient.ConsumeMessages(context.Background(), constants.ChatMessageTopic, s.consumeChatMessage)
 }
 
 // Handles a single chat message from from Kafka consumer & routes to chat consumers
@@ -94,7 +94,7 @@ func (s *ChatMessageService) SendMessageToUser(senderUserID string, message dtos
 	}
 
 	// Publish message to topic: chat-message
-	err = s.kafkaClient.PublishMessage(constants.ChatMessageTopic, string(messageJson))
+	err = s.kafkaClient.PublishMessage(chatMessage.ReceiverUserID, string(messageJson))
 	if err != nil {
 		return err
 	}
