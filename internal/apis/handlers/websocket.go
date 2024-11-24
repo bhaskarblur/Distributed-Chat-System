@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"distributed-chat-system/internal/apis/dtos"
+	"distributed-chat-system/internal/models"
 	"distributed-chat-system/internal/services"
 	"encoding/json"
 	"log"
@@ -12,17 +13,13 @@ import (
 )
 
 type WebSocketHandler struct {
-	upgrader websocket.Upgrader
-	conns    map[string]*websocket.Conn
+	upgrader    websocket.Upgrader
+	conns       map[string]*websocket.Conn
+	chatService *services.ChatMessageService
 }
 
-var chatService *services.ChatMessageService
-
 // InitWebSocketHandler initializes the WebSocketHandler and subscribes it to the ChatMessageService
-func InitWebSocketHandler() *WebSocketHandler {
-	if chatService == nil {
-		chatService = services.NewChatMessageService()
-	}
+func InitWebSocketHandler(chatService *services.ChatMessageService) *WebSocketHandler {
 
 	handler := &WebSocketHandler{
 		upgrader: websocket.Upgrader{
@@ -31,7 +28,8 @@ func InitWebSocketHandler() *WebSocketHandler {
 				return true
 			},
 		},
-		conns: make(map[string]*websocket.Conn),
+		conns:       make(map[string]*websocket.Conn),
+		chatService: chatService,
 	}
 
 	// Subscribe to the ChatMessageService once
@@ -84,7 +82,7 @@ func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 
 		// Log and send the message to the service
 		log.Printf("Message received from user %s: %+v", userID, chatMessage)
-		err = chatService.SendMessageToUser(userID, chatMessage)
+		err = h.chatService.SendMessageToUser(userID, chatMessage)
 		if err != nil {
 			log.Printf("Error sending message: %v", err)
 		}
@@ -92,8 +90,8 @@ func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 }
 
 // Notify sends a message to the connected WebSocket user
-func (h *WebSocketHandler) Notify(senderUserID string, message dtos.ChatMessageDto) error {
-	receiverID := message.ReceiverId
+func (h *WebSocketHandler) Notify(senderUserID string, message models.ChatMessage) error {
+	receiverID := message.ReceiverUserID
 	conn, exists := h.conns[receiverID]
 	if !exists {
 		log.Printf("No active WebSocket connection for user: %s", receiverID)
@@ -101,14 +99,10 @@ func (h *WebSocketHandler) Notify(senderUserID string, message dtos.ChatMessageD
 	}
 
 	response := gin.H{
-		"status": "message_received",
-		"from":   senderUserID,
-		"message": gin.H{
-			"chat_id":      message.ChatId,
-			"receiver_id":  message.ReceiverId,
-			"message_type": message.MessageType,
-			"message":      message.Message,
-		},
+		"chat_id":      message.ChatID,
+		"sender":       senderUserID,
+		"message_type": message.MessageType,
+		"message":      message.Message,
 	}
 
 	responseJSON, err := json.Marshal(response)
