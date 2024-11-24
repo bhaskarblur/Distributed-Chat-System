@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"distributed-chat-system/internal/apis/dtos"
-	"distributed-chat-system/internal/constants"
 	"distributed-chat-system/internal/models"
 	"distributed-chat-system/internal/utils"
 	"distributed-chat-system/pkg/kafka"
@@ -40,7 +39,7 @@ func NewChatMessageService(kafkaClient *kafka.KafkaClient, redisRepo redis.IRedi
 
 // Starts listening to messages from Kafka consumer
 func (s *ChatMessageService) StartMessageConsumption() {
-	s.kafkaClient.ConsumeMessages(context.Background(), constants.ChatMessageTopic, s.consumeChatMessage)
+	s.kafkaClient.ConsumeMessages(context.Background(), os.Getenv("SERVER_ID"), s.consumeChatMessage)
 }
 
 // Handles a single chat message from from Kafka consumer & routes to chat consumers
@@ -134,8 +133,10 @@ func (s *ChatMessageService) SendMessageToUser(senderUserID string, message dtos
 	if serverLookupId == nil {
 		return fmt.Errorf("user not connected to any server")
 	}
+
+	log.Println("receiver user is connected to server: ", *serverLookupId)
 	// Publish message to topic: chat-message
-	err = s.kafkaClient.PublishMessage(*serverLookupId, string(messageJson))
+	err = s.kafkaClient.PublishMessage(*serverLookupId, chatMessage.ChatID, string(messageJson))
 	if err != nil {
 		return err
 	}

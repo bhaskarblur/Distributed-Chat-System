@@ -35,10 +35,10 @@ func NewKafkaClient(cfg *Config) *KafkaClient {
 }
 
 // PublishMessage sends a message to a Kafka topic
-func (k *KafkaClient) PublishMessage(receiverID, message string) error {
+func (k *KafkaClient) PublishMessage(topic, receiverID, message string) error {
 	err := k.Producer.WriteMessages(context.Background(),
 		kafka.Message{
-			Topic: k.DefaultTopic, // Default topic is used
+			Topic: topic, // Default topic is used
 			Key:   []byte(receiverID),
 			Value: []byte(message),
 		},

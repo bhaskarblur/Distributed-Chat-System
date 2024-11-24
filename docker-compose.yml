@@ -22,7 +22,9 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
     depends_on:
       - zookeeper
     networks:
@@ -62,7 +64,7 @@ services:
       - KAFKA_URL=kafka:9092
       - CHAT_GROUP_ID=chat-service
       - SERVER_ID=service-1
-      - REDIS_HOST=localhost
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_USERNAME=redis
       - REDIS_PASSWORD=redis
@@ -85,13 +87,13 @@ services:
       - KAFKA_URL=kafka:9092
       - CHAT_GROUP_ID=chat-service
       - SERVER_ID=service-2
-      - REDIS_HOST=localhost
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_USERNAME=redis
       - REDIS_PASSWORD=redis
     depends_on:
       - kafka
-        - redis
+      - redis
     networks:
       - chat-network
 
@@ -108,7 +110,7 @@ services:
       - KAFKA_URL=kafka:9092
       - CHAT_GROUP_ID=chat-service
       - SERVER_ID=service-3
-      - REDIS_HOST=localhost
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_USERNAME=redis
       - REDIS_PASSWORD=redis
@@ -117,6 +119,10 @@ services:
       - redis
     networks:
       - chat-network
+
+volumes:
+  redis:
+
 networks:
   chat-network:
     driver: bridge

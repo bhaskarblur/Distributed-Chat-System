@@ -28,7 +28,7 @@ func InitializeDependencies() {
 		cfg := kafka.DefaultConfig()
 		cfg.Brokers = os.Getenv("KAFKA_URL") // Update as per your environment
 		cfg.Topics = []string{constants.ChatMessageTopic}
-		cfg.GroupID = os.Getenv("CHAT_GROUP_ID")
+		cfg.GroupID = os.Getenv("CHAT_GROUP_ID") // Use: CHAT_GROUP_ID
 		return kafka.NewKafkaClient(cfg), nil
 	})
 	if err != nil {
