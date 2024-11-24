@@ -91,10 +91,10 @@ func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 
 // Notify sends a message to the connected WebSocket user
 func (h *WebSocketHandler) Notify(senderUserID string, message models.ChatMessage) error {
-	receiverID := message.ReceiverUserID
-	conn, exists := h.conns[receiverID]
+	log.Println("Got Notified with event id:", message.EventID)
+	conn, exists := h.conns[message.ReceiverUserID]
 	if !exists {
-		log.Printf("No active WebSocket connection for user: %s", receiverID)
+		log.Printf("No active WebSocket connection for receiver_user: %s. Skipping ahead.", message.ReceiverUserID)
 		return nil
 	}
 
@@ -107,16 +107,16 @@ func (h *WebSocketHandler) Notify(senderUserID string, message models.ChatMessag
 
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("Error marshalling message for user %s: %v", receiverID, err)
+		log.Printf("Error marshalling message for user %s: %v", message.ReceiverUserID, err)
 		return err
 	}
 
 	err = conn.WriteMessage(websocket.TextMessage, responseJSON)
 	if err != nil {
-		log.Printf("Error sending message to user %s: %v", receiverID, err)
+		log.Printf("Error sending message to user %s: %v", message.ReceiverUserID, err)
 		return err
 	}
 
-	log.Printf("Message sent to user %s: %+v", receiverID, message)
+	log.Printf("Message sent to user %s: %+v", message.ReceiverUserID, message)
 	return nil
 }
