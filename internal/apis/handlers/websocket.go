@@ -33,7 +33,7 @@ func InitWebSocketHandler(chatService *services.ChatMessageService) *WebSocketHa
 	}
 
 	// Subscribe to the ChatMessageService once
-	chatService.SubscribeToChatMessage(handler)
+	chatService.SetChatConsumer(handler)
 	return handler
 }
 
@@ -67,6 +67,8 @@ func (h *WebSocketHandler) InitWebSocket(c *gin.Context) {
 
 	log.Printf("WebSocket connection established for user: %s", userID)
 
+	h.chatService.SubscribeUserToChatServer(userID)
+	defer h.chatService.UnsubscribeUserToChatServer(userID)
 	// WebSocket communication loop
 	for {
 		_, message, err := conn.ReadMessage()

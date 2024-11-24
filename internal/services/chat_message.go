@@ -5,10 +5,15 @@ import (
 	"distributed-chat-system/internal/apis/dtos"
 	"distributed-chat-system/internal/constants"
 	"distributed-chat-system/internal/models"
+	"distributed-chat-system/internal/utils"
 	"distributed-chat-system/pkg/kafka"
+	"distributed-chat-system/pkg/redis"
 	"encoding/json"
+	"fmt"
 	"log"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,13 +26,15 @@ type ChatMessageService struct {
 	// Mutex to ensure thread-safe operations
 	kafkaClient   *kafka.KafkaClient
 	mutex         sync.RWMutex
-	chatConsumers []ChatConsumerInterface
+	chatConsumers *ChatConsumerInterface
+	redisRepo     redis.IRedisRepositories
 }
 
-func NewChatMessageService(kafkaClient *kafka.KafkaClient) *ChatMessageService {
+func NewChatMessageService(kafkaClient *kafka.KafkaClient, redisRepo redis.IRedisRepositories) *ChatMessageService {
 	return &ChatMessageService{
 		kafkaClient:   kafkaClient,
-		chatConsumers: make([]ChatConsumerInterface, 0),
+		chatConsumers: nil,
+		redisRepo:     redisRepo,
 	}
 }
 
@@ -49,31 +56,61 @@ func (s *ChatMessageService) consumeChatMessage(message string) {
 
 	log.Println("Unmarshaled chat message: ", chatMessage)
 	// Notify all registered chat consumers
-	for _, consumer := range s.chatConsumers {
-		consumer.Notify(chatMessage.SenderUserID, *chatMessage)
+	if s.chatConsumers != nil {
+		(*s.chatConsumers).Notify(chatMessage.SenderUserID, *chatMessage)
 	}
 }
 
-// SubscribeToChatMessage adds a consumer to the list
-func (s *ChatMessageService) SubscribeToChatMessage(consumer ChatConsumerInterface) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.chatConsumers = append(s.chatConsumers, consumer)
-	log.Println("New consumer subscribed")
+// SubscribeUserToChatServer adds a consumer user to service registry lookup store
+func (s *ChatMessageService) SubscribeUserToChatServer(userId string) {
+	jsonData := map[string]interface{}{
+		"server_id": os.Getenv("SERVER_ID"),
+	}
+
+	jsonString, err := json.Marshal(jsonData)
+	if err != nil {
+		log.Printf("Error marshalling user to chat server")
+		return
+	}
+	s.redisRepo.Set(userId, jsonString, time.Minute*5, context.Background())
+	log.Println("User added to service registry lookup store: ", userId)
 }
 
-// UnsubscribeToChatMessage removes a consumer from the list
-func (s *ChatMessageService) UnsubscribeToChatMessage(consumer ChatConsumerInterface) {
+// SubscribeToChatMessage adds a consumer user to service registry lookup store
+func (s *ChatMessageService) UnsubscribeUserToChatServer(userId string) {
+	err := s.redisRepo.Del(userId, context.Background())
+	if err != nil {
+		return
+	}
+	log.Println("User removed from service registry lookup store: ", userId)
+}
+
+// LookupUserChatServer finds which server is the user currently connected to
+func (s *ChatMessageService) LookupUserChatServer(userId string) *string {
+	userLookupInfo, err := s.redisRepo.Get(userId, context.Background())
+	if err != nil {
+		return nil
+	}
+
+	var lookupData map[string]interface{}
+
+	err = json.Unmarshal([]byte(userLookupInfo), &lookupData)
+	if err != nil {
+		return nil
+	}
+	return utils.StringPointer(lookupData["server_id"].(string))
+}
+func (s *ChatMessageService) SetChatConsumer(consumer ChatConsumerInterface) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	s.chatConsumers = &consumer
+	log.Println("Consumer subscribed")
+}
 
-	for i, c := range s.chatConsumers {
-		if c == consumer {
-			s.chatConsumers = append(s.chatConsumers[:i], s.chatConsumers[i+1:]...)
-			log.Println("Consumer unsubscribed")
-			break
-		}
-	}
+func (s *ChatMessageService) UnsetChatConsumer() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.chatConsumers = nil
 }
 
 // Publishes message to Kafka
@@ -93,8 +130,12 @@ func (s *ChatMessageService) SendMessageToUser(senderUserID string, message dtos
 		return err
 	}
 
+	serverLookupId := s.LookupUserChatServer(chatMessage.ReceiverUserID)
+	if serverLookupId == nil {
+		return fmt.Errorf("user not connected to any server")
+	}
 	// Publish message to topic: chat-message
-	err = s.kafkaClient.PublishMessage(chatMessage.ReceiverUserID, string(messageJson))
+	err = s.kafkaClient.PublishMessage(*serverLookupId, string(messageJson))
 	if err != nil {
 		return err
 	}
